@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     var day: u32 = 1;
-    while (day <= 3) : (day += 1) {
+    while (day <= 4) : (day += 1) {
         const dayString = b.fmt("day{:0>2}", .{day});
         const zigFile = b.fmt("src/{s}.zig", .{dayString});
         const name = b.fmt("{s}", .{dayString});
