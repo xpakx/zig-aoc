@@ -26,6 +26,13 @@ pub fn main() !void {
 
     var pos = Pos{};
 
+    var h2 = std.AutoHashMap(Pos, i32).init(allocator);
+    try h2.put(Pos{}, 2);
+    defer h2.deinit();
+    var pos_santa = Pos{};
+    var pos_robo = Pos{};
+    var turn: u32 = 0;
+
     while (true) {
         const byte = file.reader().readByte() catch |err| switch (err) {
             error.EndOfStream => break,
@@ -42,6 +49,13 @@ pub fn main() !void {
         };
 
         try updatePosition(dir, &pos, &h);
+
+        if (@mod(turn, 2) == 0) {
+            try updatePosition(dir, &pos_santa, &h2);
+        } else {
+            try updatePosition(dir, &pos_robo, &h2);
+        }
+        turn += 1;
     }
 
     var visited: u32 = 0;
@@ -51,6 +65,13 @@ pub fn main() !void {
     }
 
     try stdout.print(" * Visited houses: {d}\n", .{visited});
+
+    var visited2: u32 = 0;
+    var it2 = h2.iterator();
+    while (it2.next()) |_| {
+        visited2 += 1;
+    }
+    try stdout.print(" * Visited houses (with robot): {d}\n", .{visited2});
     try bw.flush();
 }
 
