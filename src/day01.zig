@@ -12,6 +12,9 @@ pub fn main() !void {
 
     var floor: i32 = 0;
 
+    var pos: u16 = 0;
+    var part2Found: bool = false;
+
     while (true) {
         const byte = file.reader().readByte() catch |err| switch (err) {
             error.EndOfStream => break,
@@ -30,6 +33,13 @@ pub fn main() !void {
             Direction.FloorUp => floor += 1,
         }
 
+        if (!part2Found) {
+            pos += 1;
+            if (floor == -1) {
+                part2Found = true;
+            }
+        }
     }
     try stdout.print(" * Floor: {d}\n", .{floor});
+    try stdout.print("** Position: {d}\n", .{pos});
 }
