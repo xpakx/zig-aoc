@@ -8,7 +8,19 @@ pub fn main() !void {
     try stdout.print("Advent of Code 2024, Day 4\n", .{});
     try stdout.print("==========================\n", .{});
 
-    var zeroes: u8 = 5;
+    const key = "ckczppom";
+    const part1 = try calculate(key, 5);
+    const part2 = try calculate(key, 6);
+
+    try stdout.print(" * Part 1: {d}\n", .{part1});
+    try stdout.print(" * Part 2: {d}\n", .{part2});
+
+    try bw.flush();
+}
+
+fn calculate(key: []const u8, _zeroes: u8) !u32 {
+    var zeroes: u8 = _zeroes;
+
     var full: bool = true;
     if (zeroes % 2 != 0) {
         full = false;
@@ -17,13 +29,8 @@ pub fn main() !void {
 
     zeroes = zeroes / 2;
 
-    const key = "ckczppom";
-
     var buffer: [30]u8 = undefined;
     std.mem.copyForwards(u8, &buffer, key);
-
-    try stdout.print("{s}\n", .{buffer});
-    try bw.flush();
 
     var found: bool = false;
     var num: u32 = 1;
@@ -40,10 +47,7 @@ pub fn main() !void {
     }
 
     num -= 1;
-
-    try stdout.print("Result: {d}\n", .{num});
-
-    try bw.flush();
+    return num;
 }
 
 fn test_md5(key: []const u8, zeroes: u8, last_byte_full: bool) bool {
