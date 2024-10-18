@@ -30,6 +30,15 @@ pub fn main() !void {
     try stdout.print("Advent of Code 2024, Day 5\n", .{});
     try stdout.print("==========================\n", .{});
 
+    const p1 = try part1();
+    const p2 = try part2();
+
+    try stdout.print(" * Nice words: {d}\n", .{p1});
+    try stdout.print("** Nice words: {d}\n", .{p2});
+    try bw.flush();
+}
+
+fn part1() !u32 {
     var file = try std.fs.cwd().openFile("input/input05.txt", .{});
     defer file.close();
 
@@ -75,6 +84,105 @@ pub fn main() !void {
         last = byte;
         pos += 1;
     }
-    try stdout.print(" * Nice words: {d}\n", .{nice_words});
-    try bw.flush();
+
+    return nice_words;
+}
+
+const Key = struct {
+    first: u8,
+    second: u8,
+};
+
+fn part2() !u32 {
+    var file = try std.fs.cwd().openFile("input/input05.txt", .{});
+    defer file.close();
+
+    var pos: u32 = 0;
+    var last: u8 = '0';
+    var last2: u8 = '0';
+    var triad_flag: u8 = '0';
+
+    var one_letter: u32 = 0;
+
+    var nice_words: u32 = 0;
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    var h = std.AutoHashMap(Key, u32).init(allocator);
+    defer h.deinit();
+
+    while (true) {
+        const byte = file.reader().readByte() catch |err| switch (err) {
+            error.EndOfStream => break,
+            else => return err,
+        };
+
+        if (byte == '\n') {
+            _ = try test_triad(last2, last, byte, triad_flag, &h);
+            if (one_letter > 0) {
+                var max_pairs: u32 = 0;
+
+                var it = h.iterator();
+                while (it.next()) |entry| {
+                    if (entry.value_ptr.* > max_pairs) {
+                        max_pairs = entry.value_ptr.*;
+                    }
+                }
+                if (max_pairs > 1) {
+                    nice_words += 1;
+                }
+            }
+            pos = 0;
+            one_letter = 0;
+            triad_flag = '0';
+
+            h.clearRetainingCapacity();
+            continue;
+        }
+
+        if (pos <= 1) {
+            last2 = last;
+            last = byte;
+            pos += 1;
+            continue;
+        }
+
+        if (byte == last2) {
+            one_letter += 1;
+        }
+
+        triad_flag = try test_triad(last2, last, byte, triad_flag, &h);
+
+        last2 = last;
+        last = byte;
+        pos += 1;
+    }
+
+    return nice_words;
+}
+
+pub fn test_triad(last2: u8, last: u8, byte: u8, triad_flag: u8, h: *std.AutoHashMap(Key, u32)) !u8 {
+    const key = Key{ .first = last2, .second = last };
+
+    if (triad_flag != '0' and byte == triad_flag) {
+        try updateMap(&key, 2, h);
+        return '0';
+    } else if (triad_flag != '0' and byte != triad_flag) {
+        try updateMap(&key, 1, h);
+        return '0';
+    } else if (last == last2 and last == byte) {
+        return byte;
+    } else {
+        try updateMap(&key, 1, h);
+        return '0';
+    }
+}
+
+pub fn updateMap(pos: *const Key, delta: u32, h: *std.AutoHashMap(Key, u32)) !void {
+    const current = h.get(pos.*);
+    if (current) |v| {
+        try h.put(pos.*, v + delta);
+    } else {
+        try h.put(pos.*, delta);
+    }
 }
