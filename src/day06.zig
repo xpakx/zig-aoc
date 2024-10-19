@@ -26,13 +26,22 @@ pub fn main() !void {
 
     var lights: [1000][1000]bool = [_][1000]bool{[_]bool{false} ** 1000} ** 1000;
 
-    for (try instructions.toOwnedSlice()) |instr| {
+    for (instructions.items) |instr| {
         updateLights(instr, &lights);
     }
 
     const lit = countLights(&lights);
 
     try stdout.print(" * Lit lights: {d}\n", .{lit});
+
+    var lights2: [1000][1000]u16 = [_][1000]u16{[_]u16{0} ** 1000} ** 1000;
+
+    for (instructions.items) |instr| {
+        updateLights2(instr, &lights2);
+    }
+
+    const lit2 = countBrightness(&lights2);
+    try stdout.print("** Brightness: {d}\n", .{lit2});
     try bw.flush();
 }
 
@@ -309,6 +318,32 @@ pub fn countLights(lights: *[1000][1000]bool) u32 {
             if (lights[i][j]) {
                 result += 1;
             }
+        }
+    }
+    return result;
+}
+
+pub fn updateLights2(instr: Instruction, lights: *[1000][1000]u16) void {
+    for (instr.start.x..instr.end.x + 1) |i| {
+        for (instr.start.y..instr.end.y + 1) |j| {
+            switch (instr.action) {
+                Action.TurnOn => lights[i][j] += 1,
+                Action.TurnOff => {
+                    if (lights[i][j] > 0) {
+                        lights[i][j] -= 1;
+                    }
+                },
+                Action.Toggle => lights[i][j] += 2,
+            }
+        }
+    }
+}
+
+pub fn countBrightness(lights: *[1000][1000]u16) u32 {
+    var result: u32 = 0;
+    for (0..1000) |i| {
+        for (0..1000) |j| {
+            result += @as(u32, lights[i][j]);
         }
     }
     return result;
