@@ -15,15 +15,39 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var arr = std.ArrayList(Token).init(allocator);
-    defer arr.deinit();
-    try scanner.scan_tokens(&arr);
+    var tokens = std.ArrayList(Token).init(allocator);
+    defer tokens.deinit();
+    try scanner.scan_tokens(&tokens);
 
-    try stdout.print("{any}", .{arr});
+    var instructions = std.ArrayList(Instruction).init(allocator);
+    defer instructions.deinit();
+    try extract_instructions(&tokens, &instructions);
+    // try stdout.print("{any}\n", .{instructions});
 
-    try stdout.print(" * Floor: {d}\n", .{10});
+    var lights: [1000][1000]bool = [_][1000]bool{[_]bool{false} ** 1000} ** 1000;
+
+    for (try instructions.toOwnedSlice()) |instr| {
+        updateLights(instr, &lights);
+    }
+
+    const lit = countLights(&lights);
+
+    try stdout.print(" * Lit lights: {d}\n", .{lit});
     try bw.flush();
 }
+
+const Action = enum { TurnOn, TurnOff, Toggle };
+
+const Coord = struct {
+    x: u32,
+    y: u32,
+};
+
+const Instruction = struct {
+    action: Action,
+    start: Coord,
+    end: Coord,
+};
 
 const TokenType = enum { Turn, On, Off, Toggle, Num, Comma, Through, EOF };
 
@@ -149,4 +173,143 @@ pub fn is_digit(byte: u8) bool {
 
 pub fn is_alpha(byte: u8) bool {
     return byte >= 'a' and byte <= 'z';
+}
+
+pub fn extract_instructions(tokens: *std.ArrayList(Token), instructions: *std.ArrayList(Instruction)) !void {
+    var part: u8 = 0;
+    var turn: bool = false;
+    var error_line: u32 = 0;
+    var err: bool = false;
+    var action: Action = undefined;
+    var x1: u32 = undefined;
+    var y1: u32 = undefined;
+    var x2: u32 = undefined;
+    var y2: u32 = undefined;
+
+    for (try tokens.toOwnedSlice()) |token| {
+        if (part >= 8) {
+            if (err) {
+                err = false;
+            } else {
+                const instr = Instruction{
+                    .action = action,
+                    // min and max for easier iterating later on, they're all rectangles after all
+                    .start = Coord{ .x = min(x1, x2), .y = min(y1, y2) },
+                    .end = Coord{ .x = max(x1, x2), .y = max(y1, y2) },
+                };
+                try instructions.append(instr);
+            }
+            part = 0;
+        }
+        switch (token.token_type) {
+            TokenType.Turn => {
+                if (part != 0) {
+                    err = true;
+                    error_line = token.line;
+                    std.debug.print("{d} | Token `turn` at bad position\n", .{token.line});
+                }
+                turn = true;
+            },
+            TokenType.On => {
+                if (part != 0 and !turn) {
+                    turn = false;
+                    err = true;
+                    error_line = token.line;
+                    std.debug.print("{d} | Token `on` at bad position\n", .{token.line});
+                }
+                turn = false;
+                part = 1;
+                action = Action.TurnOn;
+            },
+            TokenType.Off => {
+                if (part != 0 and !turn) {
+                    turn = false;
+                    err = true;
+                    error_line = token.line;
+                    std.debug.print("{d} | Token `off` at bad position\n", .{token.line});
+                }
+                turn = false;
+                part = 1;
+                action = Action.TurnOff;
+            },
+            TokenType.Toggle => {
+                if (part != 0) {
+                    err = true;
+                    error_line = token.line;
+                    std.debug.print("{d} | Token `toggle` at bad position\n", .{token.line});
+                }
+                part = 1;
+                action = Action.Toggle;
+            },
+            TokenType.Num => {
+                if (part != 1 and part != 3 and part != 5 and part != 7) {
+                    err = true;
+                    error_line = token.line;
+                    std.debug.print("{d} | Number `{d}` at bad position\n", .{ token.line, token.literal });
+                }
+                if (part == 1) {
+                    x1 = token.literal;
+                } else if (part == 3) {
+                    y1 = token.literal;
+                } else if (part == 5) {
+                    x2 = token.literal;
+                } else if (part == 7) {
+                    y2 = token.literal;
+                }
+                part += 1;
+            },
+            TokenType.Comma => {
+                if (part != 2 and part != 6) {
+                    err = true;
+                    error_line = token.line;
+                    std.debug.print("{d} | Comma at bad position\n", .{token.line});
+                }
+                part += 1;
+            },
+            TokenType.Through => {
+                if (part != 4) {
+                    err = true;
+                    error_line = token.line;
+                    std.debug.print("{d} | Token `through` at bad position\n", .{token.line});
+                }
+                part = 5;
+            },
+            TokenType.EOF => {},
+        }
+    }
+}
+
+fn min(a: u32, b: u32) u32 {
+    return if (a < b) a else b;
+}
+
+fn max(a: u32, b: u32) u32 {
+    return if (a > b) a else b;
+}
+
+// this is actually pretty dumb thing to do, we could calculate
+// unions and xors of rectangles instead the way e.g. window
+// managers do, but this way it's faster to implement
+pub fn updateLights(instr: Instruction, lights: *[1000][1000]bool) void {
+    for (instr.start.x..instr.end.x + 1) |i| {
+        for (instr.start.y..instr.end.y + 1) |j| {
+            switch (instr.action) {
+                Action.TurnOn => lights[i][j] = true,
+                Action.TurnOff => lights[i][j] = false,
+                Action.Toggle => lights[i][j] = !lights[i][j],
+            }
+        }
+    }
+}
+
+pub fn countLights(lights: *[1000][1000]bool) u32 {
+    var result: u32 = 0;
+    for (0..1000) |i| {
+        for (0..1000) |j| {
+            if (lights[i][j]) {
+                result += 1;
+            }
+        }
+    }
+    return result;
 }
