@@ -108,6 +108,7 @@ fn part2() !u32 {
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
     var h = std.AutoHashMap(Key, u32).init(allocator);
     defer h.deinit();
 

@@ -18,6 +18,7 @@ pub fn main() !void {
     defer file.close();
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     var h = std.AutoHashMap(Pos, i32).init(allocator);

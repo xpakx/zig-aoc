@@ -13,6 +13,7 @@ pub fn main() !void {
 
     var scanner = Scanner{ .file = &file };
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     var tokens = std.ArrayList(Token).init(allocator);

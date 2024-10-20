@@ -20,6 +20,7 @@ pub fn main() !void {
     var reader = buffered.reader();
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     var arr = std.ArrayList(u8).init(allocator);
