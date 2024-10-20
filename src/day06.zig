@@ -196,7 +196,7 @@ pub fn extract_instructions(tokens: *std.ArrayList(Token), instructions: *std.Ar
     var x2: u32 = undefined;
     var y2: u32 = undefined;
 
-    for (try tokens.toOwnedSlice()) |token| {
+    for (tokens.items) |token| {
         if (part >= 8) {
             if (err) {
                 err = false;
