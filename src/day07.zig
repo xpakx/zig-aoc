@@ -20,16 +20,30 @@ pub fn main() !void {
     defer tokens.deinit();
     try scanner.scan_tokens(&tokens);
 
-    var h = std.StringHashMap(i32).init(allocator); // TODO: values should be instructions
+    var h = std.StringHashMap(Operation).init(allocator);
     defer {
         var it = h.keyIterator();
         while (it.next()) |key| {
             allocator.free(key.*);
         }
+        var it2 = h.valueIterator();
+        while (it2.next()) |val| {
+            if (val.identifier1) |id| {
+                allocator.free(id);
+            }
+            if (val.identifier2) |id| {
+                allocator.free(id);
+            }
+        }
         h.deinit();
     }
 
     try construct_hash_map(&tokens, &h, &allocator);
+    var it = h.iterator();
+    while (it.next()) |entry| {
+        try entry.value_ptr.*.print();
+        try stdout.print("{s}\n", .{entry.key_ptr.*});
+    }
 
     try stdout.print("** Brightness: {d}\n", .{10});
 
@@ -229,18 +243,74 @@ const Operation = struct {
     op_type: Operator,
     value1: ?u32,
     value2: ?u32,
-    identifier1: ?*const u8,
-    identifier2: ?*const u8,
+    identifier1: ?[]u8,
+    identifier2: ?[]u8,
 
     pub fn is_unary(self: *const Operation) bool {
-        return self.right == null;
+        return self.op_type == Operator.NOT or self.op_type == Operator.NOOP;
+    }
+
+    pub fn print(self: *const Operation) !void {
+        if (self.op_type == Operator.NOT) {
+            try stdout.print("NOT ", .{});
+        }
+        if (self.identifier1) |value| {
+            try stdout.print("{s}", .{value});
+        }
+        if (self.value1) |value| {
+            try stdout.print("{d}", .{value});
+        }
+
+        if (!self.is_unary()) {
+            switch (self.op_type) {
+                Operator.AND => try stdout.print(" AND ", .{}),
+                Operator.OR => try stdout.print(" OR ", .{}),
+                Operator.LSHIFT => try stdout.print(" LSHIFT ", .{}),
+                Operator.RSHIFT => try stdout.print(" RSHIFT ", .{}),
+                else => {},
+            }
+        }
+
+        if (self.identifier2) |value| {
+            try stdout.print("{s}", .{value});
+        }
+        if (self.value2) |value| {
+            try stdout.print("{d}", .{value});
+        }
+        try stdout.print(" -> ", .{});
     }
 };
 
-fn construct_hash_map(tokens: *std.ArrayList(Token), h: *std.StringHashMap(i32), allocator: *const std.mem.Allocator) !void {
+fn get_or_null_name(token: ?Token, allocator: *const std.mem.Allocator) !?[]u8 {
+    if (token) |val| {
+        if (val.literal_s[0] == 0) {
+            return null;
+        }
+        const id_copy: []u8 = try allocator.alloc(u8, 10);
+        std.mem.copyForwards(u8, id_copy, val.literal_s[0..10]);
+        return id_copy;
+    }
+    return null;
+}
+
+fn get_or_null_signal(token: ?Token) ?u32 {
+    if (token) |val| {
+        if (val.literal_s[0] != 0) {
+            return null;
+        }
+        return val.literal;
+    }
+    return null;
+}
+
+fn construct_hash_map(tokens: *std.ArrayList(Token), h: *std.StringHashMap(Operation), allocator: *const std.mem.Allocator) !void {
     var group: u8 = 0;
     var arity: u8 = 0;
     var err: bool = false;
+
+    var value1: ?Token = null;
+    var value2: ?Token = null;
+    var operation: Operator = Operator.NOOP;
 
     for (tokens.items) |token| {
         if (token.token_type == TokenType.EOF) {
@@ -250,10 +320,12 @@ fn construct_hash_map(tokens: *std.ArrayList(Token), h: *std.StringHashMap(i32),
             if (group != 3) {
                 try stdout.print("Error", .{});
             }
-            try stdout.print("\n", .{});
             group = 0;
             arity = 0;
             err = false;
+            value1 = null;
+            value2 = null;
+            operation = Operator.NOOP;
             continue;
         }
 
@@ -263,18 +335,23 @@ fn construct_hash_map(tokens: *std.ArrayList(Token), h: *std.StringHashMap(i32),
         if (group == 1) {
             if (token.token_type == TokenType.ARROW) {
                 group += 1;
-                try stdout.print("->", .{});
             } else {
                 try stdout.print("Error", .{});
                 err = true;
             }
         } else if (group == 2) {
             if (token.token_type == TokenType.Name) {
+                const value: Operation = Operation{
+                    .op_type = operation,
+                    .value1 = get_or_null_signal(value1),
+                    .identifier1 = try get_or_null_name(value1, allocator),
+                    .value2 = get_or_null_signal(value2),
+                    .identifier2 = try get_or_null_name(value2, allocator),
+                };
                 group += 1;
                 const key_copy: []u8 = try allocator.alloc(u8, 10);
                 std.mem.copyForwards(u8, key_copy, token.literal_s[0..10]);
-                try stdout.print("{s}", .{token.literal_s});
-                try h.put(key_copy, 8);
+                try h.put(key_copy, value);
             } else {
                 try stdout.print("Error", .{});
                 err = true;
@@ -283,13 +360,13 @@ fn construct_hash_map(tokens: *std.ArrayList(Token), h: *std.StringHashMap(i32),
             if (arity == 0) { // not set
                 if (token.token_type == TokenType.NOT) {
                     arity = 1;
-                    try stdout.print("~", .{});
+                    operation = Operator.NOT;
                 } else if (token.token_type == TokenType.Signal) {
                     arity = 2;
-                    try stdout.print("{d}", .{token.literal});
+                    value1 = token;
                 } else if (token.token_type == TokenType.Name) {
                     arity = 2;
-                    try stdout.print("{s}", .{token.literal_s});
+                    value1 = token;
                 } else {
                     try stdout.print("Error", .{});
                     err = true;
@@ -297,10 +374,10 @@ fn construct_hash_map(tokens: *std.ArrayList(Token), h: *std.StringHashMap(i32),
             } else if (arity == 1) { // known to be not
                 if (token.token_type == TokenType.Signal) {
                     group += 1;
-                    try stdout.print("{d}", .{token.literal});
+                    value1 = token;
                 } else if (token.token_type == TokenType.Name) {
                     group += 1;
-                    try stdout.print("{s}", .{token.literal_s});
+                    value1 = token;
                 } else {
                     try stdout.print("Error", .{});
                     err = true;
@@ -308,17 +385,26 @@ fn construct_hash_map(tokens: *std.ArrayList(Token), h: *std.StringHashMap(i32),
             } else if (arity == 2) { // presumably binary operator, but can be 0-ary
                 if (token.token_type == TokenType.ARROW) {
                     group += 2;
-                    try stdout.print("->", .{});
                 } else if (is_binary_operator(token.token_type)) {
-                    arity = 1;
-                    const symbol: u8 = switch (token.token_type) {
-                        TokenType.AND => '&',
-                        TokenType.OR => '|',
-                        TokenType.LSHIFT => '<',
-                        TokenType.RSHIFT => '>',
-                        else => ' ',
+                    arity = 3;
+                    operation = switch (token.token_type) {
+                        TokenType.AND => Operator.AND,
+                        TokenType.OR => Operator.OR,
+                        TokenType.LSHIFT => Operator.LSHIFT,
+                        TokenType.RSHIFT => Operator.RSHIFT,
+                        else => Operator.NOOP,
                     };
-                    try stdout.print("{c}", .{symbol});
+                } else {
+                    try stdout.print("Error", .{});
+                    err = true;
+                }
+            } else if (arity == 3) { // second argument
+                if (token.token_type == TokenType.Signal) {
+                    group += 1;
+                    value2 = token;
+                } else if (token.token_type == TokenType.Name) {
+                    group += 1;
+                    value2 = token;
                 } else {
                     try stdout.print("Error", .{});
                     err = true;
